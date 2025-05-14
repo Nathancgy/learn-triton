@@ -27,21 +27,21 @@ def _layer_norm_fwd_fused(
     _mean = tl.zeros([BLOCK_SIZE], dtype = tl.float32)
     for col in range(0, N, BLOCK_SIZE):
         off = col + tl.arange(0, BLOCK_SIZE)
-        a = tl.load(X + off, mask = col < N, other = 0.).to(tl.float32)
+        a = tl.load(X + off, mask = off < N, other = 0.).to(tl.float32)
         _mean += a
     mean = tl.sum(_mean, axis = 0) / N
     # Compute variance
     _var = tl.zeros([BLOCK_SIZE], dtype = tl.float32)
     for col in range(0, N, BLOCK_SIZE):
         off = col + tl.arange(0, BLOCK_SIZE)
-        x = tl.load(X + off, mask = col < N, other = 0.).to(tl.float32)
+        x = tl.load(X + off, mask = off < N, other = 0.).to(tl.float32)
         x = tl.where(col < N, x - mean, others = 0.)
         _var += x * x
     var = tl.sum(_var, axis = 0) / N
     rstd = 1 / tl.sqrt(var + eps)
     # Write mean / rstd
-    tl.store(Mean + X, mean)
-    tl.store(Rstd + X, rstd)
+    tl.store(Mean + row, mean)
+    tl.store(Rstd + row, rstd)
     # Normalize and apply linear transformation
     for col in range(0, N, BLOCK_SIZE):
         off = col + tl.arange(0, BLOCK_SIZE)
@@ -49,6 +49,6 @@ def _layer_norm_fwd_fused(
         w = tl.load(W + off, mask = mask)
         b = tl.load(B + off, mask = mask)
         x = tl.load(X + off, mask = mask, other = 0.).to(tl.float32)
-        y = (x - mean) * rstd * w + B
+        y = (x - mean) * rstd * w + b
         tl.store(Y + off, y, mask = mask)
         # Write output
